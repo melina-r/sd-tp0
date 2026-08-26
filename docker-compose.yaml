@@ -20,5 +20,3 @@ services:
       - AGENCY_ID=0
       - SERVER_HOST=server
       - SERVER_PORT=5678
-
-  
