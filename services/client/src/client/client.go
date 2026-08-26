@@ -1,7 +1,9 @@
 package client
 
 import (
+	"bufio"
 	"net"
+	"os"
 	"time"
 
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
@@ -16,9 +18,11 @@ const ECHO_CLIENT_MESSAGE_AMOUNT = 3
 const ECHO_CLIENT_MESSAGE_DELAY_MS = 1000
 
 type ClientConfig struct {
-	ServerHost string
-	ServerPort string
-	AgencyId   string
+	ServerHost     string
+	ServerPort     string
+	AgencyId       string
+	InputFilePath  string
+	OutputFilePath string
 }
 
 type Client struct {
@@ -62,11 +66,25 @@ func (client *Client) Run() error {
 	const mainAction = "test-echo-server"
 	defer client.conn.Close()
 
-	for messageId := range ECHO_CLIENT_MESSAGE_AMOUNT {
-		messageArgs := []any{"agency-id", client.config.AgencyId, "message-id", messageId}
-		logger.Info(mainAction, logger.InProgress, messageArgs...)
+	inputFile, err := os.Open(client.config.InputFilePath)
+	if err != nil {
+		logger.Error(mainAction, logger.Fail, "err", err)
+		return err
+	}
+	defer inputFile.Close()
 
-		clientMessage := client.config.AgencyId
+	outputFile, err := os.Create(client.config.OutputFilePath)
+	if err != nil {
+		logger.Error(mainAction, logger.Fail, "err", err)
+		return err
+	}
+	defer outputFile.Close()
+
+	scanner := bufio.NewScanner(inputFile)
+	messageId := 0
+	for scanner.Scan() {
+		messageArgs := []any{"agency-id", client.config.AgencyId, "message-id", messageId}
+		clientMessage := scanner.Text()
 
 		if err := safe_socket.SendAll(client.conn, []byte(clientMessage)); err != nil {
 			logger.Error("send-message", logger.Fail, messageArgs...)
@@ -84,7 +102,18 @@ func (client *Client) Run() error {
 			return err
 		}
 
+		if _, err := outputFile.WriteString(string(responseBuffer) + "\n"); err != nil {
+			logger.Error("write-output-file", logger.Fail, messageArgs...)
+			return err
+		}
+
 		time.Sleep(ECHO_CLIENT_MESSAGE_DELAY_MS * time.Millisecond)
+		messageId++
+	}
+
+	if err := scanner.Err(); err != nil {
+		logger.Error("read-input-file", logger.Fail, "err", err)
+		return err
 	}
 	logger.Info(mainAction, logger.Success, "agency-id", client.config.AgencyId)
 
