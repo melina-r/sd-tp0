@@ -1,39 +1,72 @@
 import socket
-import logger
-import safe_socket
+from logger import logger
+from safe_socket import recv_all, send_all
+from protocol.deserializer import deserialize_bet
+from lottery import Lottery
+from protocol.serializer import serialize_bet, serialize_end_of_transmission
 
-_ECHO_SERVER_MESSAGE_SIZE = 1024
+_TOTAL_LENGTH_SIZE = 4
 
 
 class Server:
     def __init__(self, server_host: str, server_port: int) -> None:
         self.server_host = server_host
         self.server_port = server_port
+        self.lottery = Lottery("lottery_storage.csv")
+
+    def recv_data(self, client_socket):
+        action = "recv-message"
+        try:
+            length = recv_all(client_socket, _TOTAL_LENGTH_SIZE)
+        except Exception as e:
+            logger.error(action, logger.LogResult.fail)
+            raise e
+
+        if int.from_bytes(length, byteorder="big") < 1:
+            return None
+
+        try:
+            data = recv_all(client_socket, int.from_bytes(length, byteorder="big"))
+        except Exception as e:
+            logger.error(action, logger.LogResult.fail)
+            raise e
+
+        return data
 
     def _handle_client(self, client_socket):
         action = "handle-client"
         message_amount = 0
+        bets = []
         try:
-            logger.info(action, logger.LogResult.in_progress)
             while True:
-                client_message = safe_socket.recv_all(
-                    client_socket, _ECHO_SERVER_MESSAGE_SIZE
-                )
-                if not client_message:
-                    logger.info(
-                        action,
-                        logger.LogResult.success,
-                        "messages-amount",
-                        message_amount,
-                    )
-                    return
+                data = self.recv_data(client_socket)
+                if data is None:
+                    break
+
+                bet = deserialize_bet(data)
+                if bet is None:
+                    break
+
                 message_amount += 1
-                safe_socket.send_all(client_socket, client_message)
+                bets.append(bet)
+
         except Exception as e:
             logger.error(
                 action, logger.LogResult.fail, "messages-amount", message_amount
             )
             raise e
+
+        self.lottery.store_bets(bets)
+
+        for bet in bets:
+            if self.lottery.has_won(bet):
+                data = serialize_bet(bet)
+                try:
+                    send_all(client_socket, data)
+                except Exception as e:
+                    logger.error(action, logger.LogResult.fail)
+                    raise e
+        send_all(client_socket, serialize_end_of_transmission())
 
     def run(self):
         action = "accept-connection"

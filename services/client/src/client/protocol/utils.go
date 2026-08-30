@@ -1,32 +1,36 @@
 package protocol
 
-const INT_SIZE = 4
-const TYPE_SIZE = 1
-const LENGTH_SIZE = 2
-const FIELDS_COUNT = 6
+import "encoding/binary"
+
+const (
+	INT_SIZE          = 4
+	TYPE_SIZE         = 1
+	LENGTH_SIZE       = 2
+	TOTAL_LENGTH_SIZE = 4
+)
 
 type FieldType uint8
+
 const (
-	FieldTypeName FieldType = iota
+	EndOfTransmission FieldType = iota
+	FieldTypeName
 	FieldTypeLastName
 	FieldTypeDocument
 	FieldTypeBirthDate
 	FieldTypeLotteryNumber
 	FieldTypeAgencyId
 )
-func (f FieldType) byte() byte {
+
+func (f FieldType) Byte() byte {
 	return byte(f)
 }
 
-func intToBytes(n int) []byte {
-	return []byte{
-		byte(n >> 24),
-		byte(n >> 16),
-		byte(n >> 8),
-		byte(n),
-	}
+func IntToBytes(n int) []byte {
+	bytes_data := make([]byte, INT_SIZE)
+	binary.BigEndian.PutUint32(bytes_data, uint32(n))
+	return bytes_data
 }
 
-func bytesToInt(b []byte) int {
-	return int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
+func BytesToInt(b []byte) int {
+	return int(binary.BigEndian.Uint32(b))
 }

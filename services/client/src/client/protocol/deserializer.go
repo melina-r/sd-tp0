@@ -1,70 +1,65 @@
 package protocol
 
-import "github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/lottery"
+import (
+	"encoding/binary"
 
-func deserializeString(data []byte) (string, uint32) {
-	if len(data) < 1 {
-		return "", 0
-	}
+	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/lottery"
+)
 
-	length := uint32(data[0])
-	if uint32(len(data)) < 1+length {
-		return "", 0
-	}
-
-	return string(data[1 : 1+length]), 1 + length
+func deserializeString(data []byte, length uint16) (string) {
+	return string(data[:length])
 }
 
-func deserializeInt(data []byte) (int, uint32) {
-	if len(data) < 4 {
-		return 0, 0
-	}
-
-	value := bytesToInt(data[LENGTH_SIZE:INT_SIZE+LENGTH_SIZE])
-	return value, INT_SIZE + LENGTH_SIZE
+func deserializeInt(data []byte) (int) {
+	value := BytesToInt(data[:INT_SIZE])
+	return value
 }
 
-func DeserializeBet(data []byte) (*lottery.Bet, uint32) {
+func DeserializeBet(data []byte) (*lottery.Bet, bool) {
 	bet := &lottery.Bet{}
 	offset := uint32(0)
 
 	for i := 0; i < 6; i++ {
 		if offset >= uint32(len(data)) {
-			return nil, 0
+			return nil, false
 		}
 
 		fieldType := FieldType(data[offset])
+
+		if fieldType == EndOfTransmission {
+			return bet, true
+		}
 		offset++
+
+		length := binary.BigEndian.Uint16(data[offset : offset+LENGTH_SIZE])
+		offset += LENGTH_SIZE
 
 		switch fieldType {
 		case FieldTypeName:
-			value, bytesRead := deserializeString(data[offset:])
+			value := deserializeString(data[offset:], length)
 			bet.FirstName = value
-			offset += bytesRead
 		case FieldTypeLastName:
-			value, bytesRead := deserializeString(data[offset:])
+			value := deserializeString(data[offset:], length)
 			bet.LastName = value
-			offset += bytesRead
 		case FieldTypeBirthDate:
-			value, bytesRead := deserializeString(data[offset:])
+			value := deserializeString(data[offset:], length)
 			bet.BirthDate = value
-			offset += bytesRead
 		case FieldTypeDocument:
-			value, bytesRead := deserializeInt(data[offset:])
+			value := deserializeInt(data[offset:])
 			bet.Document = int32(value)
-			offset += bytesRead
 		case FieldTypeLotteryNumber:
-			value, bytesRead := deserializeInt(data[offset:])
+			value := deserializeInt(data[offset:])
 			bet.LotteryNumber = int32(value)
-			offset += bytesRead
 		case FieldTypeAgencyId:
-			value, bytesRead := deserializeInt(data[offset:])
-			bet.AgencyId = int32(value)
-			offset += bytesRead
+			value := deserializeString(data[offset:], length)
+			bet.AgencyId = value
 		default:
-			return nil, 0
+			return nil, false
 		}
+
+		offset += uint32(length)
 	}
 
-	return bet, offset
+	return bet, false
 }
+

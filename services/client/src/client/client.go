@@ -2,10 +2,13 @@ package client
 
 import (
 	"bufio"
+	"encoding/binary"
 	"net"
 	"os"
 	"time"
 
+	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/lottery"
+	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/protocol"
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
@@ -13,9 +16,7 @@ import (
 const CONNECTION_ATTEMPTS_MAX = 3
 const CONNECTION_ATTEMPS_DELAY_MS = 200
 
-const ECHO_CLIENT_BUFFER_SIZE = 512
-const ECHO_CLIENT_MESSAGE_AMOUNT = 3
-const ECHO_CLIENT_MESSAGE_DELAY_MS = 1000
+const TOTAL_LENGTH_SIZE = 4
 
 type ClientConfig struct {
 	ServerHost     string
@@ -62,6 +63,20 @@ func connectToServer(host, port string) (net.Conn, error) {
 	return conn, err
 }
 
+func (client *Client) ReceiveMessage() ([]byte, error) {
+	responseBuffer, err := safe_socket.RecvAll(client.conn, TOTAL_LENGTH_SIZE)
+	if err != nil {
+		return nil, err
+	}
+	length := binary.BigEndian.Uint32(responseBuffer)
+	responseBuffer, err = safe_socket.RecvAll(client.conn, int(length))
+	if err != nil {
+		return nil, err
+	}
+
+	return responseBuffer, nil
+}
+
 func (client *Client) Run() error {
 	const mainAction = "test-echo-server"
 	defer client.conn.Close()
@@ -84,38 +99,50 @@ func (client *Client) Run() error {
 	messageId := 0
 	for scanner.Scan() {
 		messageArgs := []any{"agency-id", client.config.AgencyId, "message-id", messageId}
-		clientMessage := scanner.Text()
+		data := scanner.Text()
+		bet := &lottery.Bet{}
+		err := bet.FromCsvLine(data, client.config.AgencyId)
+		if err != nil {
+			logger.Error("parse-csv-line", logger.Fail, messageArgs...)
+			return err
+		}
+		clientMessage := protocol.SerializeBet(bet)
 
-		if err := safe_socket.SendAll(client.conn, []byte(clientMessage)); err != nil {
+		if err := safe_socket.SendAll(client.conn, clientMessage); err != nil {
 			logger.Error("send-message", logger.Fail, messageArgs...)
 			return err
 		}
 
-		responseBuffer, err := safe_socket.RecvAll(client.conn, ECHO_CLIENT_BUFFER_SIZE)
-		if err != nil {
-			logger.Error("recv-response", logger.Fail, messageArgs...)
-			return err
-		}
-
-		if string(responseBuffer) != clientMessage {
-			logger.Error("check-response", logger.Fail, messageArgs...)
-			return err
-		}
-
-		if _, err := outputFile.WriteString(string(responseBuffer) + "\n"); err != nil {
-			logger.Error("write-output-file", logger.Fail, messageArgs...)
-			return err
-		}
-
-		//time.Sleep(ECHO_CLIENT_MESSAGE_DELAY_MS * time.Millisecond)
 		messageId++
 	}
 
-	if err := scanner.Err(); err != nil {
-		logger.Error("read-input-file", logger.Fail, "err", err)
+	eot := protocol.SerializeEndOfTransmission()
+	if err := safe_socket.SendAll(client.conn, eot); err != nil {
+		logger.Error("send-end-of-transmission", logger.Fail)
 		return err
 	}
-	logger.Info(mainAction, logger.Success, "agency-id", client.config.AgencyId)
+
+	winners := []lottery.Bet{}
+
+	for {
+		response, err := client.ReceiveMessage()
+		if err != nil {
+			logger.Error("recv-response", logger.Fail)
+			return err
+		}
+		winner, endOfTransmission := protocol.DeserializeBet(response)
+		if endOfTransmission || winner == nil {
+			break
+		}
+		winners = append(winners, *winner)
+	}
+
+	for _, winner := range winners {
+		if _, err := outputFile.WriteString(winner.ToCsvLine() + "\n"); err != nil {
+			logger.Error("write-output-file", logger.Fail)
+			return err
+		}
+	}
 
 	return nil
 }
