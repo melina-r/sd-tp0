@@ -14,7 +14,18 @@ func TestClientReceiveMessageAndDeserializeBet(t *testing.T) {
 	defer clientConn.Close()
 	defer serverConn.Close()
 
-	client := &client.Client{conn: clientConn}
+	config := client.ClientConfig{
+		ServerHost:     "localhost",
+		ServerPort:     "8080",
+		AgencyId:       "1",
+		InputFilePath:  "input.txt",
+		OutputFilePath: "output.txt",
+	}
+
+	client, err := client.NewClient(config)
+	if err != nil {
+		return
+	}
 
 	bet := &lottery.Bet{
 		FirstName:     "Ana",

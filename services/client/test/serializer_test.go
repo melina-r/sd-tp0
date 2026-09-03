@@ -5,16 +5,17 @@ import (
 	"testing"
 
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/lottery"
+	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/protocol"
 )
 
 func TestSerializeStringEncodesFieldTypeAndLength(t *testing.T) {
-	data := SerializeString(FieldTypeName, "Ana")
+	data := protocol.SerializeString(protocol.FieldTypeName, "Ana")
 
-	if len(data) != TYPE_SIZE+LENGTH_SIZE+len("Ana") {
-		t.Fatalf("unexpected serialized length: got %d want %d", len(data), TYPE_SIZE+LENGTH_SIZE+len("Ana"))
+	if len(data) != protocol.TYPE_SIZE+protocol.LENGTH_SIZE+len("Ana") {
+		t.Fatalf("unexpected serialized length: got %d want %d", len(data), protocol.TYPE_SIZE+protocol.LENGTH_SIZE+len("Ana"))
 	}
-	if data[0] != FieldTypeName.Byte() {
-		t.Fatalf("wrong field type: got %d want %d", data[0], FieldTypeName.Byte())
+	if data[0] != protocol.FieldTypeName.Byte() {
+		t.Fatalf("wrong field type: got %d want %d", data[0], protocol.FieldTypeName.Byte())
 	}
 	if binary.BigEndian.Uint16(data[1:3]) != uint16(len("Ana")) {
 		t.Fatalf("wrong length: got %d want %d", binary.BigEndian.Uint16(data[1:3]), len("Ana"))
@@ -34,13 +35,13 @@ func TestSerializeBetAddsFrameHeader(t *testing.T) {
 		AgencyId:      "1",
 	}
 
-	payload := SerializeBet(bet)
-	if len(payload) < TOTAL_LENGTH_SIZE {
+	payload := protocol.SerializeBet(bet)
+	if len(payload) < protocol.TOTAL_LENGTH_SIZE {
 		t.Fatalf("serialized bet too short: %d bytes", len(payload))
 	}
 
-	framedLength := binary.BigEndian.Uint32(payload[:TOTAL_LENGTH_SIZE])
-	if uint32(len(payload)-TOTAL_LENGTH_SIZE) != framedLength {
-		t.Fatalf("length prefix mismatch: got %d want %d", framedLength, len(payload)-TOTAL_LENGTH_SIZE)
+	framedLength := binary.BigEndian.Uint32(payload[:protocol.TOTAL_LENGTH_SIZE])
+	if uint32(len(payload)-protocol.TOTAL_LENGTH_SIZE) != framedLength {
+		t.Fatalf("length prefix mismatch: got %d want %d", framedLength, len(payload)-protocol.TOTAL_LENGTH_SIZE)
 	}
 }

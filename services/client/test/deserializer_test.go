@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/lottery"
+	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/protocol"
 )
 
 func TestDeserializeBetParsesAllFields(t *testing.T) {
@@ -16,8 +17,8 @@ func TestDeserializeBetParsesAllFields(t *testing.T) {
 		AgencyId:      "1",
 	}
 
-	serialized := SerializeBet(inputBet)
-	decoded, endOfTransmission := DeserializeBet(serialized[TOTAL_LENGTH_SIZE:])
+	serialized := protocol.SerializeBet(inputBet)
+	decoded, endOfTransmission := protocol.DeserializeBet(serialized[protocol.TOTAL_LENGTH_SIZE:])
 	if endOfTransmission {
 		t.Fatal("expected a valid bet, got end-of-transmission")
 	}
@@ -42,8 +43,8 @@ func TestDeserializeBetParsesAllFields(t *testing.T) {
 }
 
 func TestDeserializeBetRecognizesEndOfTransmission(t *testing.T) {
-	serialized := SerializeEndOfTransmission()
-	decoded, endOfTransmission := DeserializeBet(serialized[TOTAL_LENGTH_SIZE:])
+	serialized := protocol.SerializeEndOfTransmission()
+	decoded, endOfTransmission := protocol.DeserializeBet(serialized[protocol.TOTAL_LENGTH_SIZE:])
 	if !endOfTransmission {
 		t.Fatal("expected end-of-transmission flag to be true")
 	}
