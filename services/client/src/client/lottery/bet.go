@@ -16,14 +16,14 @@ type Bet struct {
 	BirthDate     string
 	Document      int32
 	LotteryNumber int32
-	AgencyId      string
+	AgencyId      uint32
 }
 
 func (b *Bet) GetSerializedSize() uint32 {
 	return uint32(len(b.FirstName) + len(b.LastName) + len(b.BirthDate) + DOCUMENT_SIZE + LOTTERY_NUMBER_SIZE + AGENCY_ID_SIZE)
 }
 
-func (b *Bet) FromCsvLine(csvLine string, agencyId string) error {
+func (b *Bet) FromCsvLine(csvLine string, agencyId uint32) error {
 	fields := strings.Split(csvLine, ",")
 	if len(fields) != 5 {
 		return fmt.Errorf("invalid csv line: %q", csvLine)

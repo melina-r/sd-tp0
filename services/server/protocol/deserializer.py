@@ -6,6 +6,7 @@ from protocol.utils import (
     FIELD_TYPE_BIRTH_DATE,
     FIELD_TYPE_LOTTERY_NUMBER,
     FIELD_TYPE_AGENCY_ID,
+    TOTAL_LENGTH_SIZE,
     TYPE_SIZE,
     LENGTH_SIZE,
     INT_SIZE,
@@ -25,6 +26,7 @@ def deserialize_bet(data: bytes) -> Bet:
     while offset < len(data):
         field_type = data[offset]
         if field_type == END_OF_TRANSMISSION:
+            print("End of transmission reached while deserializing bet.")
             return None
 
         field_length = int.from_bytes(data[offset + TYPE_SIZE:offset + TYPE_SIZE + LENGTH_SIZE], byteorder="big")
@@ -41,7 +43,7 @@ def deserialize_bet(data: bytes) -> Bet:
         elif field_type == FIELD_TYPE_LOTTERY_NUMBER:
             bet["number"] = deserialize_int(data[offset:])
         elif field_type == FIELD_TYPE_AGENCY_ID:
-            bet["agency_id"] = deserialize_string(data[offset:], field_length)
+            bet["agency_id"] = deserialize_int(data[offset:])
 
         offset += field_length
 
@@ -57,3 +59,22 @@ def deserialize_bet(data: bytes) -> Bet:
         birthdate=bet.get("birthdate"),
         number=bet.get("number"),
     )
+
+def deserialize_batch(data: bytes) -> (list[Bet], bool):
+    bets = []
+    offset = 0
+
+    while offset < len(data):
+        total_length = int.from_bytes(data[offset:offset + TOTAL_LENGTH_SIZE], byteorder="big")
+        offset += TOTAL_LENGTH_SIZE
+
+        bet_data = data[offset:offset + total_length]
+        bet = deserialize_bet(bet_data)
+        if bet is not None:
+            bets.append(bet)
+        else:
+            return bets, True
+
+        offset += total_length
+
+    return bets, False

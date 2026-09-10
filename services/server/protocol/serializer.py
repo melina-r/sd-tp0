@@ -42,7 +42,7 @@ def serialize_bet(bet: Bet) -> bytes:
 
     serialized_data += serialize_int(FIELD_TYPE_LOTTERY_NUMBER, bet.number)
 
-    serialized_data += serialize_string(FIELD_TYPE_AGENCY_ID, str(bet.agency_id))
+    serialized_data += serialize_int(FIELD_TYPE_AGENCY_ID, bet.agency_id)
     return serialized_data
 
 def serialize_end_of_transmission() -> bytes:

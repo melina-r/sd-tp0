@@ -21,7 +21,8 @@ const TOTAL_LENGTH_SIZE = 4
 type ClientConfig struct {
 	ServerHost     string
 	ServerPort     string
-	AgencyId       string
+	AgencyId       uint32
+	BatchSize      int
 	InputFilePath  string
 	OutputFilePath string
 }
@@ -77,6 +78,33 @@ func (client *Client) ReceiveMessage() ([]byte, error) {
 	return responseBuffer, nil
 }
 
+func (client *Client) ReceiveAcknowledgment() bool {
+	responseBuffer, err := safe_socket.RecvAll(client.conn, protocol.ACKNOWLEDGMENT_MESSAGE)
+	if err != nil {
+		logger.Error("recv-ack", logger.Fail, "err", err)
+		return false
+	}
+	ack := responseBuffer[0]
+
+	if ack == 0 {
+		logger.Error("recv-ack", logger.Fail, "err", "acknowledgment with byte 0")
+		return false
+	}
+	return true
+}
+
+func (client *Client) SendBatch(batch []byte, messageArgs ...any) error {
+	clientMessage := protocol.SerializeBatch(batch, client.config.AgencyId)
+	logger.Info("send-batch", logger.InProgress, messageArgs...)
+	if err := safe_socket.SendAll(client.conn, clientMessage); err != nil {
+		logger.Error("send-message", logger.Fail, messageArgs...)
+		return err
+	}
+
+	logger.Info("send-batch", logger.Success)
+	return nil
+}
+
 func (client *Client) Run() error {
 	const mainAction = "test-echo-server"
 	defer client.conn.Close()
@@ -97,8 +125,11 @@ func (client *Client) Run() error {
 
 	scanner := bufio.NewScanner(inputFile)
 	messageId := 0
+	batch := []byte{}
+	batchSize := 0
+	messageArgs := []any{"agency-id", client.config.AgencyId, "message-id", messageId}
+
 	for scanner.Scan() {
-		messageArgs := []any{"agency-id", client.config.AgencyId, "message-id", messageId}
 		data := scanner.Text()
 		bet := &lottery.Bet{}
 		err := bet.FromCsvLine(data, client.config.AgencyId)
@@ -107,34 +138,89 @@ func (client *Client) Run() error {
 			return err
 		}
 		clientMessage := protocol.SerializeBet(bet)
+		batch = append(batch, clientMessage...)
+		batchSize++
 
-		if err := safe_socket.SendAll(client.conn, clientMessage); err != nil {
-			logger.Error("send-message", logger.Fail, messageArgs...)
+		messageId++
+		if batchSize >= client.config.BatchSize {
+			err := client.SendBatch(batch, messageArgs...)
+			if err != nil {
+				logger.Error("send-batch", logger.Fail, messageArgs...)
+				return err
+			}
+
+			logger.Info("recv-response", logger.InProgress, messageArgs...)
+			ok := client.ReceiveAcknowledgment()
+			for !ok {
+				logger.Error("recv-response", logger.Fail, messageArgs...)
+				logger.Info("send-batch", logger.InProgress, messageArgs...)
+
+				err := client.SendBatch(batch, messageArgs...)
+				if err != nil {
+					logger.Error("send-batch", logger.Fail, messageArgs...)
+					return err
+				}
+
+				logger.Info("recv-response", logger.InProgress, messageArgs...)
+				ok = client.ReceiveAcknowledgment()
+			}
+
+			batch = []byte{}
+			batchSize = 0
+			logger.Info("recv-response", logger.Success, messageArgs...)
+		}
+	}
+
+	if batchSize > 0 {
+		err := client.SendBatch(batch, messageArgs...)
+		if err != nil {
+			logger.Error("send-batch", logger.Fail, messageArgs...)
 			return err
 		}
 
-		messageId++
+		logger.Info("recv-response", logger.InProgress, messageArgs...)
+		ok := client.ReceiveAcknowledgment()
+		if !ok {
+			logger.Error("recv-response", logger.Fail, messageArgs...)
+			return nil
+		}
+
+		batch = []byte{}
+		batchSize = 0
+		logger.Info("recv-response", logger.Success, messageArgs...)
 	}
 
-	eot := protocol.SerializeEndOfTransmission()
+	eot := protocol.SerializeEndOfTransmission(client.config.AgencyId)
 	if err := safe_socket.SendAll(client.conn, eot); err != nil {
 		logger.Error("send-end-of-transmission", logger.Fail)
 		return err
 	}
+	logger.Info("send-end-of-transmission", logger.Success)
+	ack := client.ReceiveAcknowledgment()
+	if !ack {
+		logger.Error("recv-ack", logger.Fail, "err", err)
+		return err
+	}
+	logger.Info("recv-ack", logger.Success)
 
-	winners := []lottery.Bet{}
+	logger.Info("recv-winners", logger.InProgress)
 
-	for {
-		response, err := client.ReceiveMessage()
-		if err != nil {
-			logger.Error("recv-response", logger.Fail)
-			return err
-		}
-		winner, endOfTransmission := protocol.DeserializeBet(response)
-		if endOfTransmission || winner == nil {
-			break
-		}
-		winners = append(winners, *winner)
+	response, err := client.ReceiveMessage()
+	if err != nil {
+		logger.Error("recv-winners", logger.Fail, "err", err)
+		return err
+	}
+
+	if len(response) == 0 {
+		logger.Info("recv-winners", logger.Fail, "err", "empty response")
+		return nil
+	}
+	winners, _ := protocol.DeserializeBatch(response)
+	logger.Info("recv-winners", logger.Success, "winners", len(winners))
+
+	if winners == nil {
+		logger.Error("recv-winners", logger.Fail)
+		return err
 	}
 
 	for _, winner := range winners {
@@ -143,6 +229,7 @@ func (client *Client) Run() error {
 			return err
 		}
 	}
+	logger.Info(mainAction, logger.Success, "winners", len(winners))
 
 	return nil
 }

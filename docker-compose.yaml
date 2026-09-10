@@ -8,6 +8,7 @@ services:
       - PYTHONUNBUFFERED=1
       - SERVER_HOST=server
       - SERVER_PORT=5678
+      - BATCH_SIZE=5
     ports:
       - "5678:5678"
     
@@ -22,6 +23,7 @@ services:
       - AGENCY_ID=0
       - SERVER_HOST=server
       - SERVER_PORT=5678
+      - BATCH_SIZE=5
       - INPUT_FILE=/input/input-0.csv
       - OUTPUT_FILE=/output/output-0.csv
       - INPUT_FILE_PATH=/input/input-0.csv
@@ -41,6 +43,7 @@ services:
       - AGENCY_ID=1
       - SERVER_HOST=server
       - SERVER_PORT=5678
+      - BATCH_SIZE=5
       - INPUT_FILE=/input/input-1.csv
       - OUTPUT_FILE=/output/output-1.csv
       - INPUT_FILE_PATH=/input/input-1.csv
@@ -60,6 +63,7 @@ services:
       - AGENCY_ID=2
       - SERVER_HOST=server
       - SERVER_PORT=5678
+      - BATCH_SIZE=5
       - INPUT_FILE=/input/input-2.csv
       - OUTPUT_FILE=/output/output-2.csv
       - INPUT_FILE_PATH=/input/input-2.csv
@@ -78,7 +82,8 @@ services:
     environment:
       - AGENCY_ID=3
       - SERVER_HOST=server
-      - SERVER_PORT=5678    
+      - SERVER_PORT=5678  
+      - BATCH_SIZE=5  
       - INPUT_FILE=/input/input-3.csv
       - OUTPUT_FILE=/output/output-3.csv
       - INPUT_FILE_PATH=/input/input-3.csv
@@ -98,6 +103,7 @@ services:
       - AGENCY_ID=4
       - SERVER_HOST=server
       - SERVER_PORT=5678
+      - BATCH_SIZE=5
       - INPUT_FILE=/input/input-4.csv
       - OUTPUT_FILE=/output/output-4.csv
       - INPUT_FILE_PATH=/input/input-4.csv
@@ -117,6 +123,7 @@ services:
       - AGENCY_ID=5
       - SERVER_HOST=server
       - SERVER_PORT=5678
+      - BATCH_SIZE=5
       - INPUT_FILE=/input/input-5.csv
       - OUTPUT_FILE=/output/output-5.csv
       - INPUT_FILE_PATH=/input/input-5.csv

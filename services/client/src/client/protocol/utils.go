@@ -6,7 +6,9 @@ const (
 	INT_SIZE          = 4
 	TYPE_SIZE         = 1
 	LENGTH_SIZE       = 2
+	AGENCY_ID_SIZE    = 4
 	TOTAL_LENGTH_SIZE = 4
+	FIELDS_COUNT      = 6
 )
 
 type FieldType uint8
@@ -20,6 +22,8 @@ const (
 	FieldTypeLotteryNumber
 	FieldTypeAgencyId
 )
+
+const ACKNOWLEDGMENT_MESSAGE = 1
 
 func (f FieldType) Byte() byte {
 	return byte(f)
