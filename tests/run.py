@@ -17,12 +17,12 @@ TEST_CASES = [
     Json,
     ForcedExit,
     OutputFiles,
-    Batching,
     Concurrency,
     MemoryProfile,
-    SigtermHandling,
+    Batching,
     ClientShortReadWrite,
     ServerShortReadWrite,
+    SigtermHandling,
 ]
 MESSAGE_PADDING = 32
 

@@ -16,13 +16,15 @@ func deserializeInt(data []byte) int {
 }
 
 func DeserializeBet(data []byte) (*lottery.Bet, bool) {
+	println("first byte of data: ", data[0])
 	bet := &lottery.Bet{}
 	offset := uint32(0)
 
 	for offset < uint32(len(data)) {
 		fieldType := FieldType(data[offset])
-
+		print("Field Type: ", fieldType, " Offset: ", offset, " Total Length: ", len(data), "\n")
 		if fieldType == EndOfTransmission {
+			print("End of transmission reached - offset: ", offset, " total length: ", len(data), "\n")
 			return bet, true
 		}
 		offset++
@@ -65,20 +67,23 @@ func DeserializeBatch(data []byte) ([]lottery.Bet, bool) {
 	offset := uint32(0)
 
 	for offset < uint32(len(data)) {
+		print("Offset: ", offset, " Total Length: ", len(data), "\n")
 		if offset+TOTAL_LENGTH_SIZE > uint32(len(data)) {
 			println("Error: not enough data to read bet length")
 			break
 		}
 
 		betLength := binary.BigEndian.Uint32(data[offset : offset+TOTAL_LENGTH_SIZE])
-		offset += TOTAL_LENGTH_SIZE
 
 		if betLength == 0 || offset+betLength > uint32(len(data)) {
-			println("Error: invalid bet length or buffer overflow")
+			println("Error: invalid bet length or buffer overflow: ", betLength, "offset:", offset, "total length:", len(data))
 			break
 		}
 
+		offset += TOTAL_LENGTH_SIZE
 		betData := data[offset : offset+betLength]
+		print("Offset: ", offset, " Bet Length: ", betLength, " Total Length: ", len(data), "\n")
+
 		bet, eot := DeserializeBet(betData)
 		if bet == nil {
 			// TODO: Handle error case, maybe log it or return an error
@@ -89,8 +94,8 @@ func DeserializeBatch(data []byte) ([]lottery.Bet, bool) {
 		if eot {
 			return bets, true
 		}
-
 		bets = append(bets, *bet)
+
 		print("Offset: ", offset, " Bet Length: ", betLength, " Total Length: ", len(data), "\n")
 		offset += betLength
 	}

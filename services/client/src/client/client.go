@@ -70,6 +70,7 @@ func (client *Client) ReceiveMessage() ([]byte, error) {
 		return nil, err
 	}
 	length := binary.BigEndian.Uint32(responseBuffer)
+	logger.Info("recv-message", logger.InProgress, "length", length)
 	responseBuffer, err = safe_socket.RecvAll(client.conn, int(length))
 	if err != nil {
 		return nil, err
@@ -212,9 +213,11 @@ func (client *Client) Run() error {
 	}
 
 	if len(response) == 0 {
-		logger.Info("recv-winners", logger.Fail, "err", "empty response")
+		logger.Info("recv-winners", logger.Success, "winners", 0)
+		logger.Info(mainAction, logger.Success, "winners", 0)
 		return nil
 	}
+
 	winners, _ := protocol.DeserializeBatch(response)
 	logger.Info("recv-winners", logger.Success, "winners", len(winners))
 

@@ -17,6 +17,7 @@ FIELD_TYPE_AGENCY_ID = 6
 
 DOCUMENT_SIZE = 4
 LOTTERY_NUMBER_SIZE = 4
+AGENCY_ID_SIZE = 4
 
 
 def int_to_bytes(value: int, length: int) -> bytes:
@@ -26,13 +27,12 @@ def bytes_to_int(value: bytes) -> int:
     return int.from_bytes(value, byteorder="big")
 
 def get_serialized_size(bet: Bet) -> int:
-    agency_id_bytes = str(bet.agency_id).encode("utf-8")
     size = (
         len(bet.first_name.encode("utf-8"))
         + len(bet.last_name.encode("utf-8"))
         + len(bet.birthdate.encode("utf-8"))
         + DOCUMENT_SIZE
         + LOTTERY_NUMBER_SIZE
-        + len(agency_id_bytes)
+        + AGENCY_ID_SIZE
     )
     return size

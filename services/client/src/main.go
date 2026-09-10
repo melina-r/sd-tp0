@@ -31,14 +31,14 @@ func loadConfig() (client.ClientConfig, error) {
 		return client.ClientConfig{}, errors.New("BATCH_SIZE environment variable is required")
 	}
 
-	inputFilePath := os.Getenv("INPUT_FILE_PATH")
+	inputFilePath := os.Getenv("INPUT_FILE")
 	if inputFilePath == "" {
-		return client.ClientConfig{}, errors.New("INPUT_FILE_PATH environment variable is required")
+		return client.ClientConfig{}, errors.New("INPUT_FILE environment variable is required")
 	}
 
-	outputFilePath := os.Getenv("OUTPUT_FILE_PATH")
+	outputFilePath := os.Getenv("OUTPUT_FILE")
 	if outputFilePath == "" {
-		return client.ClientConfig{}, errors.New("OUTPUT_FILE_PATH environment variable is required")
+		return client.ClientConfig{}, errors.New("OUTPUT_FILE environment variable is required")
 	}
 
 	return client.ClientConfig{
