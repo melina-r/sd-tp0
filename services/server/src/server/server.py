@@ -1,6 +1,7 @@
 import socket
 import os
 import threading
+import signal
 from threading import Lock, Barrier, Event
 from logger import logger
 from safe_socket import recv_all, send_all
@@ -17,6 +18,8 @@ class Server:
     def __init__(self, server_host: str, server_port: int) -> None:
         self.server_host = server_host
         self.server_port = server_port
+        self.server_socket = None
+        self.running = False
         self.lottery = Lottery("lottery_storage.csv")
         self.storage_lock = Lock()
         self.quorum = Barrier(AGENCY_QUORUM_MIN)
@@ -24,6 +27,30 @@ class Server:
         self.results = Event()
         self.winners_lock = Lock()
         self.winners = []
+
+    def shutdown(self, signum=None, frame=None):
+        if not self.running:
+            return
+        self.running = False
+        logger.info("shutdown", logger.LogResult.in_progress)
+
+        try:
+            self.quorum.abort()
+        except Exception:
+            pass
+        try:
+            self.reset_quorum.abort()
+        except Exception:
+            pass
+        self.results.set()
+
+        if self.server_socket:
+            try:
+                self.server_socket.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            finally:
+                self.server_socket.close()
 
     def safe_load_bets(self):
         with self.storage_lock, self.winners_lock:
@@ -76,14 +103,10 @@ class Server:
                 agency_id = int.from_bytes(data[:INT_SIZE], byteorder="big")
 
                 action = "recv_batch"
-                logger.info(action, logger.LogResult.in_progress, "agency-id", agency_id)
                 bets_recv, eot = deserialize_batch(data[INT_SIZE:])
                 
-                logger.info(action, logger.LogResult.success, "agency-id", agency_id)
-
                 ack = b"1"
                 send_all(client_socket, ack)
-                logger.info("send-ack", logger.LogResult.success, "agency-id", agency_id, "ack", ack)
 
                 message_amount += 1
                 bets.extend(bets_recv)
@@ -152,16 +175,25 @@ class Server:
         client_socket.close()
 
     def run(self):
+        signal.signal(signal.SIGTERM, self.shutdown)
+        signal.signal(signal.SIGINT, self.shutdown)
+
         action = "accept-connection"
         threads = []
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        with self.server_socket as server_socket:
             server_socket.bind((self.server_host, self.server_port))
             server_socket.listen()
-            while True:
+            self.running = True
+            while self.running:
                 try:
                     logger.info(action, logger.LogResult.in_progress)
                     client_socket, _ = server_socket.accept()
+                except OSError:
+                    logger.info(action, logger.LogResult.success, "message", "socket-closed")
+                    # El socket fue cerrado por la función shutdown()
+                    break
                 except Exception as e:
                     logger.error(action, logger.LogResult.fail)
                     break
@@ -180,3 +212,5 @@ class Server:
         for t in threads:
             t.join()
             logger.info("join-thread", logger.LogResult.success)
+        
+        logger.info("shutdown", logger.LogResult.success)

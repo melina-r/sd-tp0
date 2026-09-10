@@ -70,7 +70,6 @@ func (client *Client) ReceiveMessage() ([]byte, error) {
 		return nil, err
 	}
 	length := binary.BigEndian.Uint32(responseBuffer)
-	logger.Info("recv-message", logger.InProgress, "length", length)
 	responseBuffer, err = safe_socket.RecvAll(client.conn, int(length))
 	if err != nil {
 		return nil, err
@@ -96,13 +95,11 @@ func (client *Client) ReceiveAcknowledgment() bool {
 
 func (client *Client) SendBatch(batch []byte, messageArgs ...any) error {
 	clientMessage := protocol.SerializeBatch(batch, client.config.AgencyId)
-	logger.Info("send-batch", logger.InProgress, messageArgs...)
 	if err := safe_socket.SendAll(client.conn, clientMessage); err != nil {
 		logger.Error("send-message", logger.Fail, messageArgs...)
 		return err
 	}
 
-	logger.Info("send-batch", logger.Success)
 	return nil
 }
 
@@ -150,11 +147,9 @@ func (client *Client) Run() error {
 				return err
 			}
 
-			logger.Info("recv-response", logger.InProgress, messageArgs...)
 			ok := client.ReceiveAcknowledgment()
 			for !ok {
 				logger.Error("recv-response", logger.Fail, messageArgs...)
-				logger.Info("send-batch", logger.InProgress, messageArgs...)
 
 				err := client.SendBatch(batch, messageArgs...)
 				if err != nil {
@@ -162,13 +157,11 @@ func (client *Client) Run() error {
 					return err
 				}
 
-				logger.Info("recv-response", logger.InProgress, messageArgs...)
 				ok = client.ReceiveAcknowledgment()
 			}
 
 			batch = []byte{}
 			batchSize = 0
-			logger.Info("recv-response", logger.Success, messageArgs...)
 		}
 	}
 
@@ -179,7 +172,6 @@ func (client *Client) Run() error {
 			return err
 		}
 
-		logger.Info("recv-response", logger.InProgress, messageArgs...)
 		ok := client.ReceiveAcknowledgment()
 		if !ok {
 			logger.Error("recv-response", logger.Fail, messageArgs...)
@@ -188,7 +180,6 @@ func (client *Client) Run() error {
 
 		batch = []byte{}
 		batchSize = 0
-		logger.Info("recv-response", logger.Success, messageArgs...)
 	}
 
 	eot := protocol.SerializeEndOfTransmission(client.config.AgencyId)
@@ -235,4 +226,10 @@ func (client *Client) Run() error {
 	logger.Info(mainAction, logger.Success, "winners", len(winners))
 
 	return nil
+}
+
+func (client *Client) Close() {
+	if client.conn != nil {
+		client.conn.Close()
+	}
 }
