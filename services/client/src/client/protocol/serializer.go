@@ -6,6 +6,8 @@ import (
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/lottery"
 )
 
+// SerializeString serializes a string field into a byte slice.
+// It includes the field type, length, and the string data.
 func SerializeString(field FieldType, value string) []byte {
 	data := []byte(value)
 	bytes := make([]byte, TYPE_SIZE+LENGTH_SIZE+len(data))
@@ -15,6 +17,8 @@ func SerializeString(field FieldType, value string) []byte {
 	return bytes
 }
 
+// SerializeInt serializes an integer field into a byte slice.
+// It includes the field type, length, and the integer data.
 func SerializeInt(field FieldType, value uint32) []byte {
 	bytes := make([]byte, TYPE_SIZE+LENGTH_SIZE+INT_SIZE)
 	bytes[0] = field.Byte()
@@ -23,6 +27,9 @@ func SerializeInt(field FieldType, value uint32) []byte {
 	return bytes
 }
 
+// SerializeBet serializes a Bet struct into a byte slice.
+// It includes all the fields of the Bet struct in the order defined by the protocol.
+// The serialized data is prefixed with the total length of the serialized Bet.
 func SerializeBet(bet *lottery.Bet) []byte {
 	var data []byte
 	data = append(data, SerializeString(FieldTypeName, bet.FirstName)...)
@@ -40,6 +47,8 @@ func SerializeBet(bet *lottery.Bet) []byte {
 	return bytes
 }
 
+// SerializeEndOfTransmission serializes an EndOfTransmission 
+// signal into a byte slice. It includes the field type and the agency ID.
 func SerializeEndOfTransmission(agencyId uint32) []byte {	
 	eot_byte := EndOfTransmission.Byte()
 	eot_length := TYPE_SIZE
@@ -56,6 +65,8 @@ func SerializeEndOfTransmission(agencyId uint32) []byte {
 	return eot_bytes
 }
 
+// SerializeBatch serializes a batch of Bets into a byte slice.
+// It includes the total length of the batch and the agency ID.
 func SerializeBatch(batch []byte, agencyId uint32) []byte {
 	totalLength := uint32(len(batch)) + AGENCY_ID_SIZE
 	bytes := make([]byte, TOTAL_LENGTH_SIZE+totalLength)

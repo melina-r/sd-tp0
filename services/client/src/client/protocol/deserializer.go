@@ -15,6 +15,10 @@ func deserializeInt(data []byte) uint32 {
 	return value
 }
 
+// DeserializeBet deserializes a single Bet from the given byte slice.
+// It returns the deserialized Bet and a boolean indicating if the 
+// EndOfTransmission was reached. 
+// If the deserialization fails, it returns nil and false.
 func DeserializeBet(data []byte) (*lottery.Bet, bool) {
 	bet := &lottery.Bet{}
 	offset := uint32(0)
@@ -60,6 +64,10 @@ func DeserializeBet(data []byte) (*lottery.Bet, bool) {
 	return bet, false
 }
 
+// DeserializeBatch deserializes a batch of Bets from the given byte slice.
+// It returns a slice of deserialized Bets and a boolean indicating if the 
+// EndOfTransmission was reached. 
+// If the deserialization fails, it returns nil and false.
 func DeserializeBatch(data []byte) ([]lottery.Bet, bool) {
 	bets := []lottery.Bet{}
 	offset := uint32(0)
@@ -82,8 +90,6 @@ func DeserializeBatch(data []byte) ([]lottery.Bet, bool) {
 
 		bet, eot := DeserializeBet(betData)
 		if bet == nil {
-			// TODO: Handle error case, maybe log it or return an error
-			println("Error deserializing bet data")
 			return nil, false
 		}
 

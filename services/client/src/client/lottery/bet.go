@@ -26,7 +26,7 @@ func (b *Bet) GetSerializedSize() uint32 {
 
 func (b *Bet) FromCsvLine(csvLine string, agencyId uint32) error {
 	fields := strings.Split(csvLine, ",")
-	if len(fields) != FIELD_COUNT - 1 {
+	if len(fields) != FIELD_COUNT-1 {
 		return fmt.Errorf("invalid csv line: %q", csvLine)
 	}
 

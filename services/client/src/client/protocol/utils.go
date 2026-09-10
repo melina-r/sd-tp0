@@ -25,6 +25,14 @@ const (
 
 const ACKNOWLEDGMENT_MESSAGE = 1
 
+type InvalidAcknowledgmentError struct {
+	Message string
+}
+
+func (e *InvalidAcknowledgmentError) Error() string {
+	return e.Message
+}
+
 func (f FieldType) Byte() byte {
 	return byte(f)
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
 
-const CONNECTION_ATTEMPTS_MAX = 3
+const CONNECTION_ATTEMPTS_MAX = 5
 const CONNECTION_ATTEMPS_DELAY_MS = 200
 
 const TOTAL_LENGTH_SIZE = 4
@@ -64,6 +64,9 @@ func connectToServer(host, port string) (net.Conn, error) {
 	return conn, err
 }
 
+// ReceiveMessage receives a message from the server.
+// It first reads the total length of the message, then reads the message itself.
+// It returns the received message as a byte slice and any error encountered.
 func (client *Client) ReceiveMessage() ([]byte, error) {
 	responseBuffer, err := safe_socket.RecvAll(client.conn, TOTAL_LENGTH_SIZE)
 	if err != nil {
@@ -78,6 +81,8 @@ func (client *Client) ReceiveMessage() ([]byte, error) {
 	return responseBuffer, nil
 }
 
+// ReceiveAcknowledgment receives an acknowledgment from the server.
+// It returns true if the acknowledgment is valid, false otherwise.
 func (client *Client) ReceiveAcknowledgment() bool {
 	responseBuffer, err := safe_socket.RecvAll(client.conn, protocol.ACKNOWLEDGMENT_MESSAGE)
 	if err != nil {
@@ -93,11 +98,97 @@ func (client *Client) ReceiveAcknowledgment() bool {
 	return true
 }
 
+// SendBatch sends a batch of serialized bets to the server.
+// It serializes the batch with the agency ID and sends it over the connection.
+// It returns any error encountered during sending.
 func (client *Client) SendBatch(batch []byte, messageArgs ...any) error {
 	clientMessage := protocol.SerializeBatch(batch, client.config.AgencyId)
 	if err := safe_socket.SendAll(client.conn, clientMessage); err != nil {
 		logger.Error("send-message", logger.Fail, messageArgs...)
 		return err
+	}
+
+	return nil
+}
+
+// SendBatchWithRetries sends a batch of serialized bets to the server with retries.
+// It first attempts to send the batch and waits for an acknowledgment.
+// If the acknowledgment is not received, it retries sending the batch until it succeeds.
+// It returns any error encountered during sending or receiving.
+func (client *Client) SendBatchWithRetries(batch []byte, messageArgs ...any) error {
+	err := client.SendBatch(batch, messageArgs...)
+	if err != nil {
+		logger.Error("send-batch", logger.Fail, messageArgs...)
+		return err
+	}
+
+	ok := client.ReceiveAcknowledgment()
+	for !ok {
+		logger.Error("recv-response", logger.Fail, messageArgs...)
+
+		err := client.SendBatch(batch, messageArgs...)
+		if err != nil {
+			logger.Error("send-batch", logger.Fail, messageArgs...)
+			return err
+		}
+
+		ok = client.ReceiveAcknowledgment()
+	}
+	return nil
+}
+
+// SendEndOfTransmission sends an EndOfTransmission signal to the server.
+// It serializes the signal with the agency ID and sends it over the connection.
+// It then waits for an acknowledgment from the server.
+// It returns any error encountered during sending or receiving.
+func (client *Client) SendEndOfTransmission() error {
+	eot := protocol.SerializeEndOfTransmission(client.config.AgencyId)
+	if err := safe_socket.SendAll(client.conn, eot); err != nil {
+		logger.Error("send-end-of-transmission", logger.Fail)
+		return err
+	}
+	logger.Info("send-end-of-transmission", logger.Success)
+
+	ack := client.ReceiveAcknowledgment()
+	if !ack {
+		err := protocol.InvalidAcknowledgmentError{
+			Message: "invalid acknowledgment received after sending end of transmission",
+		}
+		logger.Error("recv-ack", logger.Fail, "err", err)
+		return &err
+	}
+	logger.Info("recv-ack", logger.Success)
+	return nil
+}
+
+// HandleServerResponse handles the server's response after sending all bets.
+// It receives the response, deserializes the winners, and writes them to the output file.
+// It returns any error encountered during the process.
+func (client *Client) HandleServerResponse(outputFile *os.File) error {
+	logger.Info("recv-winners", logger.InProgress)
+	response, err := client.ReceiveMessage()
+	if err != nil {
+		logger.Error("recv-winners", logger.Fail, "err", err)
+		return err
+	}
+
+	if len(response) == 0 {
+		return nil
+	}
+
+	winners, _ := protocol.DeserializeBatch(response)
+	logger.Info("recv-winners", logger.Success, "winners", len(winners))
+
+	if winners == nil {
+		logger.Error("recv-winners", logger.Fail)
+		return err
+	}
+	
+	for _, winner := range winners {
+		if _, err := outputFile.WriteString(winner.ToCsvLine() + "\n"); err != nil {
+			logger.Error("write-output-file", logger.Fail)
+			return err
+		}
 	}
 
 	return nil
@@ -141,24 +232,7 @@ func (client *Client) Run() error {
 
 		messageId++
 		if batchSize >= client.config.BatchSize {
-			err := client.SendBatch(batch, messageArgs...)
-			if err != nil {
-				logger.Error("send-batch", logger.Fail, messageArgs...)
-				return err
-			}
-
-			ok := client.ReceiveAcknowledgment()
-			for !ok {
-				logger.Error("recv-response", logger.Fail, messageArgs...)
-
-				err := client.SendBatch(batch, messageArgs...)
-				if err != nil {
-					logger.Error("send-batch", logger.Fail, messageArgs...)
-					return err
-				}
-
-				ok = client.ReceiveAcknowledgment()
-			}
+			client.SendBatchWithRetries(batch, messageArgs...)
 
 			batch = []byte{}
 			batchSize = 0
@@ -166,64 +240,24 @@ func (client *Client) Run() error {
 	}
 
 	if batchSize > 0 {
-		err := client.SendBatch(batch, messageArgs...)
-		if err != nil {
-			logger.Error("send-batch", logger.Fail, messageArgs...)
-			return err
-		}
-
-		ok := client.ReceiveAcknowledgment()
-		if !ok {
-			logger.Error("recv-response", logger.Fail, messageArgs...)
-			return nil
-		}
+		client.SendBatchWithRetries(batch, messageArgs...)
 
 		batch = []byte{}
 		batchSize = 0
 	}
 
-	eot := protocol.SerializeEndOfTransmission(client.config.AgencyId)
-	if err := safe_socket.SendAll(client.conn, eot); err != nil {
-		logger.Error("send-end-of-transmission", logger.Fail)
-		return err
-	}
-	logger.Info("send-end-of-transmission", logger.Success)
-	ack := client.ReceiveAcknowledgment()
-	if !ack {
-		logger.Error("recv-ack", logger.Fail, "err", err)
-		return err
-	}
-	logger.Info("recv-ack", logger.Success)
-
-	logger.Info("recv-winners", logger.InProgress)
-
-	response, err := client.ReceiveMessage()
+	err = client.SendEndOfTransmission()
 	if err != nil {
-		logger.Error("recv-winners", logger.Fail, "err", err)
+		logger.Error("send-end-of-transmission", logger.Fail, messageArgs...)
 		return err
 	}
 
-	if len(response) == 0 {
-		logger.Info("recv-winners", logger.Success, "winners", 0)
-		logger.Info(mainAction, logger.Success, "winners", 0)
-		return nil
-	}
-
-	winners, _ := protocol.DeserializeBatch(response)
-	logger.Info("recv-winners", logger.Success, "winners", len(winners))
-
-	if winners == nil {
-		logger.Error("recv-winners", logger.Fail)
+	err = client.HandleServerResponse(outputFile)
+	if err != nil {
+		logger.Error("handle-server-response", logger.Fail, messageArgs...)
 		return err
 	}
-
-	for _, winner := range winners {
-		if _, err := outputFile.WriteString(winner.ToCsvLine() + "\n"); err != nil {
-			logger.Error("write-output-file", logger.Fail)
-			return err
-		}
-	}
-	logger.Info(mainAction, logger.Success, "winners", len(winners))
+	logger.Info(mainAction, logger.Success)
 
 	return nil
 }
