@@ -1,6 +1,7 @@
 import multiprocessing
 import socket
-import threading
+import os
+from threading import Lock, Barrier, Event
 from logger import logger
 from safe_socket import recv_all, send_all
 from protocol.deserializer import deserialize_batch, deserialize_bet
@@ -9,6 +10,7 @@ from protocol.serializer import serialize_bet
 from protocol.utils import INT_SIZE
 
 _TOTAL_LENGTH_SIZE = 4
+AGENCY_QUORUM_MIN = int(os.getenv('AGENCY_QUORUM_MIN', '3'))
 
 
 class Server:
@@ -16,6 +18,25 @@ class Server:
         self.server_host = server_host
         self.server_port = server_port
         self.lottery = Lottery("lottery_storage.csv")
+        self.storage_lock = Lock()
+        self.quorum = Barrier(AGENCY_QUORUM_MIN)
+        self.restart_quorum = Barrier(AGENCY_QUORUM_MIN)
+        self.results = Event()
+        self.winners_lock = Lock()
+        self.winners = []
+
+    def safe_load_bets(self):
+        with self.storage_lock, self.winners_lock:
+            bets = list(self.lottery.load_bets())
+            for bet in bets:
+                if self.lottery.has_won(bet):
+                    self.winners.append(bet)
+            self.results.set()
+
+    def get_winners(self, agency_id):
+        with self.winners_lock:
+            winners = [bet for bet in self.winners if bet.agency_id == agency_id]
+        return winners
 
     def recv_data(self, client_socket):
         action = "recv-message"
@@ -36,10 +57,14 @@ class Server:
 
         return data
 
-    def _handle_client(self, client_socket, bets_que):
+    def store_bets_safe(self, bets):
+        with self.storage_lock:
+            self.lottery.store_bets(bets)
+
+    def _handle_client(self, client_socket, bets_que, quorum):
         action = "handle-client"
         message_amount = 0
-
+        agency_id = None
         bets = []
 
         logger.info(action, logger.LogResult.in_progress)
@@ -79,12 +104,24 @@ class Server:
         logger.info(action, logger.LogResult.success, "messages-amount", message_amount)
         for bet in bets:
             bets_que.put(bet)
-        # self.lottery.store_bets(bets)
-        # TODO: wait quorum
+        
+        self.store_bets_safe(bets)
+        try:        
+            order = self.quorum.wait()
+        except Exception as e:
+            logger.error("quorum-wait", logger.LogResult.fail, "agency-id", agency_id)
+            raise e
+
+        if order == 0:
+            logger.info("quorum-wait", logger.LogResult.success, "agency-id", agency_id)
+            self.safe_load_bets()
+
+        self.results.wait()
+        winners = self.get_winners(agency_id)
+            
         batch_data = b"".join(
             serialize_bet(bet)
-            for bet in bets
-            if self.lottery.has_won(bet)
+            for bet in winners
         )
         message = len(batch_data).to_bytes(_TOTAL_LENGTH_SIZE, byteorder="big") + batch_data
         send_all(client_socket, message)
@@ -105,6 +142,7 @@ class Server:
     def run(self):
         action = "accept-connection"
         threads = []
+
         queue = multiprocessing.Queue()
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
             server_socket.bind((self.server_host, self.server_port))
@@ -119,9 +157,8 @@ class Server:
                 logger.info(action, logger.LogResult.success)
 
                 try:
-                    #self._handle_client(client_socket)
                     logger.info("start-process", logger.LogResult.in_progress)
-                    p = multiprocessing.Process(target=self._handle_client, args=(client_socket, queue))
+                    p = multiprocessing.Process(target=self._handle_client, args=(client_socket, queue, quorum))
                     threads.append(p)
                     p.start()
                     
@@ -129,4 +166,6 @@ class Server:
                 except Exception as e:
                     logger.error(action, logger.LogResult.fail)
                     client_socket.close()
-            # TODO: cuando termina join de todos los threads
+        
+        for t in threads:
+            t.join()
