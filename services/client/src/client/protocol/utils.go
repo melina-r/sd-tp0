@@ -1,0 +1,48 @@
+package protocol
+
+import "encoding/binary"
+
+const (
+	INT_SIZE          = 4
+	TYPE_SIZE         = 1
+	LENGTH_SIZE       = 2
+	AGENCY_ID_SIZE    = 4
+	TOTAL_LENGTH_SIZE = 4
+	FIELDS_COUNT      = 6
+)
+
+type FieldType uint8
+
+const (
+	EndOfTransmission FieldType = iota
+	FieldTypeName
+	FieldTypeLastName
+	FieldTypeDocument
+	FieldTypeBirthDate
+	FieldTypeLotteryNumber
+	FieldTypeAgencyId
+)
+
+const ACKNOWLEDGMENT_MESSAGE = 1
+
+type InvalidAcknowledgmentError struct {
+	Message string
+}
+
+func (e *InvalidAcknowledgmentError) Error() string {
+	return e.Message
+}
+
+func (f FieldType) Byte() byte {
+	return byte(f)
+}
+
+func IntToBytes(n uint32) []byte {
+	bytes_data := make([]byte, INT_SIZE)
+	binary.BigEndian.PutUint32(bytes_data, n)
+	return bytes_data
+}
+
+func BytesToInt(b []byte) uint32 {
+	return binary.BigEndian.Uint32(b)
+}
