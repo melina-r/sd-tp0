@@ -10,7 +10,7 @@ func deserializeString(data []byte, length uint16) string {
 	return string(data[:length])
 }
 
-func deserializeInt(data []byte) int {
+func deserializeInt(data []byte) uint32 {
 	value := BytesToInt(data[:INT_SIZE])
 	return value
 }
@@ -42,10 +42,10 @@ func DeserializeBet(data []byte) (*lottery.Bet, bool) {
 			bet.BirthDate = value
 		case FieldTypeDocument:
 			value := deserializeInt(data[offset:])
-			bet.Document = int32(value)
+			bet.Document = uint32(value)
 		case FieldTypeLotteryNumber:
 			value := deserializeInt(data[offset:])
-			bet.LotteryNumber = int32(value)
+			bet.LotteryNumber = uint32(value)
 		case FieldTypeAgencyId:
 			value := deserializeInt(data[offset:])
 			bet.AgencyId = uint32(value)

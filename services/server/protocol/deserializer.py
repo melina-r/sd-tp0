@@ -14,12 +14,16 @@ from protocol.utils import (
 from lottery import Bet
 
 def deserialize_int(data: bytes) -> int:
+    """Returns the integer value from the given bytes."""
     return int.from_bytes(data[:INT_SIZE], byteorder="big")
 
 def deserialize_string(data: bytes, length: int) -> str:
+    """Returns the string value from the given bytes."""
     return data[:length].decode("utf-8")
 
 def deserialize_bet(data: bytes) -> Bet:
+    """Deserializes a Bet object from the given bytes. 
+    If the FieldType is END_OF_TRANSMISSION, it returns None."""
     bet = {}
     offset = 0
 
@@ -61,6 +65,9 @@ def deserialize_bet(data: bytes) -> Bet:
     )
 
 def deserialize_batch(data: bytes) -> (list[Bet], bool):
+    """Deserializes a batch of Bet objects from the given bytes. 
+    Returns a tuple containing the list of bets and a boolean indicating
+    if End of Transmission was reached during deserialization."""
     bets = []
     offset = 0
 

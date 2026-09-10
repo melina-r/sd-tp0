@@ -29,12 +29,12 @@ func (f FieldType) Byte() byte {
 	return byte(f)
 }
 
-func IntToBytes(n int) []byte {
+func IntToBytes(n uint32) []byte {
 	bytes_data := make([]byte, INT_SIZE)
-	binary.BigEndian.PutUint32(bytes_data, uint32(n))
+	binary.BigEndian.PutUint32(bytes_data, n)
 	return bytes_data
 }
 
-func BytesToInt(b []byte) int {
-	return int(binary.BigEndian.Uint32(b))
+func BytesToInt(b []byte) uint32 {
+	return binary.BigEndian.Uint32(b)
 }

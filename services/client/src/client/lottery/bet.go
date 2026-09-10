@@ -9,13 +9,14 @@ import (
 const DOCUMENT_SIZE = 4
 const AGENCY_ID_SIZE = 4
 const LOTTERY_NUMBER_SIZE = 4
+const FIELD_COUNT = 6
 
 type Bet struct {
 	FirstName     string
 	LastName      string
 	BirthDate     string
-	Document      int32
-	LotteryNumber int32
+	Document      uint32
+	LotteryNumber uint32
 	AgencyId      uint32
 }
 
@@ -25,7 +26,7 @@ func (b *Bet) GetSerializedSize() uint32 {
 
 func (b *Bet) FromCsvLine(csvLine string, agencyId uint32) error {
 	fields := strings.Split(csvLine, ",")
-	if len(fields) != 5 {
+	if len(fields) != FIELD_COUNT - 1 {
 		return fmt.Errorf("invalid csv line: %q", csvLine)
 	}
 
@@ -41,9 +42,9 @@ func (b *Bet) FromCsvLine(csvLine string, agencyId uint32) error {
 
 	b.FirstName = strings.TrimSpace(fields[0])
 	b.LastName = strings.TrimSpace(fields[1])
-	b.Document = int32(document)
+	b.Document = uint32(document)
 	b.BirthDate = strings.TrimSpace(fields[3])
-	b.LotteryNumber = int32(lotteryNumber)
+	b.LotteryNumber = uint32(lotteryNumber)
 	b.AgencyId = agencyId
 
 	return nil

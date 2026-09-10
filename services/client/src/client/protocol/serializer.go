@@ -40,9 +40,7 @@ func SerializeBet(bet *lottery.Bet) []byte {
 	return bytes
 }
 
-func SerializeEndOfTransmission(agencyId uint32) []byte {
-	// Wrapped like a batch: BATCH_SIZE + AGENCY_ID + [TOTAL_LENGTH + END_OF_TRANSMISSION]
-	
+func SerializeEndOfTransmission(agencyId uint32) []byte {	
 	eot_byte := EndOfTransmission.Byte()
 	eot_length := TYPE_SIZE
 	eot_data := make([]byte, TYPE_SIZE+TOTAL_LENGTH_SIZE)
