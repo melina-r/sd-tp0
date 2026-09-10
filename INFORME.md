@@ -1,9 +1,10 @@
 # TP Nivelador: Docker, Comunicaciones y Concurrencia
+
 Retamozo Melina, 110065
 
 ## Protocolo implementado
 
-Para poder compartir información de apuestas desde una agencia hacia el servidor central elegí la comunicación basada en stream de bytes, por lo tanto tuve que implementar también un protocolo que garantice la correcta serialización de los datos.
+Para la transmisión de las apuestas desde las agencias hacia el servidor central, se optó por una comunicación basada en un flujo de bytes sobre TCP, lo que requirió el diseño de un protocolo propio para garantizar la correcta serialización y delimitación de los datos.
 
 ### Modelado de una apuesta
 
@@ -12,67 +13,84 @@ Bet:
     first_name  string  
     last_name   string 
     document    uint32
-    birth_date  string 
+    birthdate   string 
     number      uint32
     agency_id   uint32
+
 ```
 
-El ordenamiento de los campos viene dado por el archivo .csv de entrada. Se agrega el campo `agency_id` para que el servidor pueda identificar a quien pertenece cada apuesta al momento de devolver los ganadores.
+El ordenamiento de los campos está dado por el archivo .csv de entrada. Se agregó el campo `agency_id` para que el servidor pueda identificar a qué agencia pertenece cada apuesta al momento de devolver los ganadores.
 
 ### Serialización
 
-Para la serialización a bytes se utilizó un formato Type-Length-Value de la siguiente forma:
+Para la serialización a bytes se utilizó un formato Type-Length-Value estructurado de la siguiente forma:
 
 ```
-TOTAL LENGTH (4B)
-------------
+TOTAL_LENGTH (4B)
+-----------------
 FIELD_TYPE (1B)     FIELD_LENGTH (2B)        FIELD_VALUE 
 ...
+
 ```
 
-De esta forma cuando el receptor quiere deserializar un arreglo de bytes a una apuesta primero lee el `TOTAL_LENGTH` y con eso puede obtener todos los bytes pertenecientes a la misma. Luego leerá primero el tipo de campo que es un enum y se usa para hacer un switch y almacenar cada dato en un struct de apuesta, con el `FIELD_LENGTH` puede saber hasta donde leer para el dato actual y sabe que lo siguiente en el arreglo de bytes será otro campo o la finalización del mismo.
+Al deserializar un arreglo de bytes a una apuesta, el receptor lee primero el campo `TOTAL_LENGTH` para determinar la cantidad total de bytes del registro. Luego, procesa secuencialmente cada atributo identificando su tipo mediante un enum `FIELD_TYPE` y su extensión mediante `FIELD_LENGTH`, lo que permite asignar cada dato al atributo correspondiente dentro de la estructura de la apuesta.
 
 ### Serialización por batches
 
-Un requerimiento de este trabajo era permitir enviar múltiples apuestas en un mismo mensaje, para garantizar que el servidor pueda leer correctamente todos los datos el protocolo implementado para un batch es el siguiente:
+Para permitir el envío de múltiples apuestas en un mismo mensaje, el protocolo para un lote se definió de la siguiente manera:
 
 ```
 TOTAL_LENGTH_BATCH (4B)
-------------------
+----------------------
 AGENCY_ID (4B)   [ARREGLO DE APUESTAS SERIALIZADAS]
+
 ```
 
-Se serializa cada apuesta por separado siguiendo el formato ya mencionado, se agrega un campo de `AGENCY_ID` adelante para que el servidor pueda separar las apuestas recibidas sin tener que leer los datos de cada una de ellas. Para el `TOTAL_LENGTH_BATCH` se toman en cuenta los 4 bytes del identificador de la agencia y se le suma el tamaño total del arreglo de apuestas.
+Cada apuesta se serializa por separado siguiendo el formato TLV. Se antecede un campo `AGENCY_ID` para que el servidor identifique el origen del lote sin necesidad de inspeccionar cada apuesta individual. Para el cálculo de `TOTAL_LENGTH_BATCH`, se contemplan los 4 bytes del identificador de la agencia más la suma del tamaño total del arreglo de apuestas.
 
-El caso de batch no es simétrico, en el caso de la respuesta de ganadores por parte del servidor no inlcuye el `AGENCY_ID` porque sería información redundante para la agencia que la recibe.
+El protocolo de lotes es asimétrico: la respuesta del servidor con la lista de ganadores no incluye el encabezado `AGENCY_ID`, dado que resulta una información redundante para la agencia receptora.
 
 ### Acknowledgement
 
-Cuando el servidor recibe un batch envía un mensaje de confirmación de la recepción con el siguiente formato:
+Tras la recepción correcta de un lote, el servidor responde con un mensaje de confirmación con el siguiente formato:
 
 ```
 1
+
 ```
-Es un único byte que confirma que se recibió correctamente los datos enviados, al no contener información relevante se priorizó que sea rápido y fácil de interpretar.
+
+Consiste en un único byte que confirma la recepción exitosa de los datos. Al no requerir información adicional, se priorizó un formato liviano para minimizar el overhead de red y agilizar el procesamiento.
 
 ### End of Transmission (EOT)
 
-Para anunciar que se terminaron de enviar datos se usa un mensaje especial EOT que utiliza un FieldType igual a 0 y se serializa de la siguiente forma:
+Para anunciar la finalización de la transmisión de datos, se envía un mensaje especial EOT que utiliza un `FIELD_TYPE` igual a 0, serializado de la siguiente forma:
+
 ```
-TOTAL_LENGHT (4B)
+TOTAL_LENGTH (4B)
 -----------------
-0 (FIELD TYPE 1B)  0 (FIELD LENGTH 2B)
+0 (FIELD_TYPE 1B)  0 (FIELD_LENGTH 2B)
+
 ```
+
+---
 
 ## Herramientas de concurrencia
 
 ### Hilos por cliente
 
+Se implementó un esquema de concurrencia multihilo. El Global Interpreter Lock (GIL) de Python no representa un límite en el rendimiento para este diseño, ya que el sistema es predominantemente I/O-bound (lectura/escritura en red y archivos) y no realiza operaciones intensivas de CPU.
+
 ### Locks para recursos compartidos
 
-El recurso compartido por todos los hilos de los clientes es el archivo .csv donde el servidor almacena todas las apuestas. Para evitar condiciones de carrera se usa `threading.Lock` mediante los métodos `safe_store_bets()`, `safe_load_bets()`
+El recurso compartido por los hilos de los clientes es el archivo `.csv` donde el servidor almacena las apuestas. Para evitar condiciones de carrera, se utiliza `threading.Lock` mediante los métodos `store_bets_safe()` y `safe_load_bets()`, los cuales garantizan exclusión mutua durante las operaciones de lectura y escritura en disco.
 
-### Barreras para el quorum
+### Barreras para el quórum
+
+Se utilizaron dos barreras de tipo `threading.Barrier`:
+
+* Primera barrera (`quorum`): Asegura que exista un mínimo de agencias en espera (`AGENCY_QUORUM_MIN`) antes de realizar el sorteo. Mediante el orden de llegada (`wait()`), el hilo que obtiene el índice `0` asume la responsabilidad de ejecutar el sorteo y registrar los ganadores.
+* Segunda barrera (`reset_quorum`): Sincroniza la lectura de ganadores asegurando que todas las agencias hayan procesado sus resultados antes de reiniciar el estado global para una nueva ejecución.
 
 ### Eventos para los resultados
 
+Dado que solo el hilo con índice `0` realiza la carga de apuestas y determinación de ganadores, los demás hilos deben esperar a que los resultados se encuentren disponibles. Para esta coordinación se utilizó un `threading.Event`, bloqueando la ejecución de los demás hilos hasta que el hilo ejecutor habilite la lectura de los resultados.

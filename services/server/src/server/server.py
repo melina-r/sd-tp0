@@ -25,7 +25,6 @@ class Server:
 
         self.running = False
         self.storage_lock = Lock()
-        self.winners_lock = Lock()
 
         self.quorum = Barrier(AGENCY_QUORUM_MIN)
         self.reset_quorum = Barrier(AGENCY_QUORUM_MIN)
@@ -73,7 +72,7 @@ class Server:
 
     def safe_load_bets(self):
         """Loads bets from storage and determines winners in a thread-safe manner."""
-        with self.storage_lock, self.winners_lock:
+        with self.storage_lock:
             bets = list(self.lottery.load_bets())
             for bet in bets:
                 if self.lottery.has_won(bet):
@@ -82,9 +81,9 @@ class Server:
 
     def get_winners(self, agency_id):
         """Returns a list of winners filtered by the given agency ID in a thread-safe manner."""
-        with self.winners_lock:
-            return [bet for bet in self.winners if bet.agency_id == agency_id]
+        winners = [bet for bet in self.winners if bet.agency_id == agency_id]
         logger.info("get-winners", logger.LogResult.success, "agency-id", agency_id)
+        return winners
 
     def recv_data(self, client_socket):
         """Receives data from the client socket, first reading the
@@ -226,8 +225,7 @@ class Server:
         logger.info(action, logger.LogResult.in_progress)
         order = self.reset_quorum.wait()
         if order == 0:
-            with self.winners_lock:
-                self.winners.clear()
+            self.winners.clear()
             self.results.clear()
             self.quorum.reset()
             logger.info(action, logger.LogResult.success, "agency-id", agency_id)
